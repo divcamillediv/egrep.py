@@ -1,0 +1,3 @@
+# Pour les tests unitaires et benchmarks
+coverage>=7.0
+matplotlib>=3.7

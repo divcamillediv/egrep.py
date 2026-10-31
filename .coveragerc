@@ -1,0 +1,12 @@
+[run]
+branch = True
+source = .
+omit =
+    test_egrep.py
+    bench_egrep.py
+
+[report]
+show_missing = True
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:

@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      full_benchmark:
+        description: "Run the full benchmark (10 runs) instead of --quick"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  BOOK_URL: https://www.gutenberg.org/files/56667/56667-0.txt
+
+jobs:
+  tests:
+    name: Unit tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run unit tests with coverage
+        run: |
+          python -m coverage run -m unittest -v test_egrep
+          python -m coverage report --fail-under=100
+
+      - name: Smoke test the assignment example
+        run: |
+          python egrep.py --stats "S(a|g|r)+on" 56667-0.txt > ours.txt
+          grep -E "S(a|g|r)+on" 56667-0.txt | tr -d '\r' > ref.txt
+          diff ref.txt ours.txt
+
+  benchmark:
+    name: Benchmark
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run benchmarks
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.full_benchmark }}" = "true" ]; then
+            python bench_egrep.py
+          else
+            python bench_egrep.py --quick
+          fi
+
+      - name: Upload charts and CSV files
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench_results/
+
+  docker:
+    name: Docker images
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build egrep image
+        run: docker build -t egrep-py .
+
+      - name: Build test/benchmark image
+        run: docker build -f Dockerfile.bench -t egrep-py-bench .
+
+      - name: Run egrep in the container
+        run: |
+          docker run --rm egrep-py "S(a|g|r)+on" 56667-0.txt > ours.txt
+          grep -E "S(a|g|r)+on" 56667-0.txt | tr -d '\r' > ref.txt
+          diff ref.txt ours.txt
+
+      - name: Run the tests in the container
+        run: docker run --rm egrep-py-bench

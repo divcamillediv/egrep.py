@@ -1,0 +1,23 @@
+# Unit tests and benchmarks in a reproducible environment.
+#
+#   docker build -f Dockerfile.bench -t egrep-py-bench .
+#   docker run --rm egrep-py-bench                                    # tests + coverage (default)
+#   docker run --rm -v "$PWD/bench_results":/app/bench_results egrep-py-bench \
+#       python bench_egrep.py --quick                                 # charts land in ./bench_results
+#
+# The base image (Debian) ships GNU grep, used as the reference by the
+# differential tests and the benchmarks.
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    MPLBACKEND=Agg
+
+WORKDIR /app
+
+COPY requirements-dev.txt ./
+RUN pip install --no-cache-dir -r requirements-dev.txt
+
+COPY *.py .coveragerc 56667-0.txt ./
+
+CMD ["sh", "-c", "python -m coverage run -m unittest -v test_egrep && python -m coverage report"]
